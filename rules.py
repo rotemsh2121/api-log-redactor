@@ -16,10 +16,17 @@ def load_rules(path):
     if not isinstance(config, dict):
         raise ValueError("rules file must contain a mapping at the top level")
 
+    key_rules = [prepare_key_rule(rule) for rule in config.get("key_rules", [])]
+    value_rules = [prepare_value_rule(rule) for rule in config.get("value_rules", [])]
+
+    # Running with no rules would pass all traffic through unredacted.
+    if not key_rules and not value_rules:
+        raise ValueError("rules file defines no rules")
+    
     return {
         "settings": config.get("settings", {}),
-        "key_rules": [prepare_key_rule(rule) for rule in config.get("key_rules", [])],
-        "value_rules": [prepare_value_rule(rule) for rule in config.get("value_rules", [])],
+        "key_rules": key_rules,
+        "value_rules": value_rules,
     }
 
 
