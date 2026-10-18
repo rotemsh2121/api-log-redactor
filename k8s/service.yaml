@@ -1,0 +1,12 @@
+# A stable address inside the cluster (http://redactor) that spreads requests over the redactor pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redactor
+spec:
+  type: ClusterIP # Reachable only from inside the cluster: log collectors call it, the internet cannot.
+  selector:
+    app: redactor
+  ports:
+    - port: 80
+      targetPort: 8080

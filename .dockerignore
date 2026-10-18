@@ -1,0 +1,10 @@
+# Keep the image small and free of anything it does not need.
+.git
+__pycache__
+.pytest_cache
+test_*.py
+testdata
+k8s
+*.ndjson
+README.md
+requirements-dev.txt

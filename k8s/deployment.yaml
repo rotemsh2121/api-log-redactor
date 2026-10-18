@@ -1,0 +1,62 @@
+# Runs the redactor service. The rules come from the ConfigMap "redactor-rules", created with:
+#   kubectl create configmap redactor-rules --from-file=rules.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redactor
+  labels:
+    app: redactor
+spec:
+  replicas: 2 # Two copies, so one can restart or be updated while the other serves traffic.
+  selector:
+    matchLabels:
+      app: redactor
+  template:
+    metadata:
+      labels:
+        app: redactor
+    spec:
+      containers:
+        - name: redactor
+          image: redactor:1.0.0 # Built from the Dockerfile; in a real cluster, an image in a registry.
+          imagePullPolicy: IfNotPresent
+          args: ["--serve", "--addr", ":8080", "--rules", "/etc/redactor/rules.yaml"]
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: rules
+              mountPath: /etc/redactor
+              readOnly: true
+          # Only send traffic to a pod that answers /healthz, and restart one that stops answering.
+          # If the rules cannot be loaded, the process exits and never answers, so it gets no traffic.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # What the pod is guaranteed (requests) and the most it may use (limits).
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          # It handles sensitive data, so give it as few permissions as possible.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: rules
+          configMap:
+            name: redactor-rules
