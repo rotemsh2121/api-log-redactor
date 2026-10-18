@@ -9,11 +9,11 @@ masked, partially masked, hashed or removed.
 ## 1. Build, run and test
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
-The only dependencies are PyYAML (reading the rules) and pytest (tests). On Windows, use `py` in
-place of `python` below.
+`requirements.txt` has what the tool needs to run: PyYAML (reading the rules) and Flask (service mode).
+`requirements-dev.txt` adds pytest for the tests. On Windows, use `py` in place of `python` below.
 
 ### CLI
 
@@ -50,7 +50,27 @@ to stdout.
 
 ### Service mode
 
-_Not written yet: added in a later commit._
+```bash
+python redactor.py --serve --addr :8080 --rules rules.yaml
+```
+
+```bash
+curl -s localhost:8080/healthz
+curl -s --data-binary @testdata/input.ndjson localhost:8080/redact
+curl -s -X POST -T - localhost:8080/redact < testdata/input.ndjson   # upload from stdin, sent chunked
+```
+
+- **`POST /redact`:** the request body is NDJSON, the response is redacted NDJSON
+  (`application/x-ndjson`). It streams: each line is read from the request, redacted and sent in the
+  response before the next line is read, so the body is never held in memory. Lines that cannot be
+  processed become error records, exactly like in the CLI. Each request logs one summary line to stderr:
+  counts per rule and error line numbers, no content.
+- **`GET /healthz`:** `200 {"status":"ok","rules":10}`. The rules are loaded **before** the server opens
+  its port, so if it answers at all, the rules are loaded and it is ready for traffic. The rule count
+  helps to check that the right file was loaded. Kubernetes uses it for both the readiness and the
+  liveness probe. If hot reloading of rules were added, readiness would need its own check.
+- **If the rules cannot be loaded, the service does not start:** it exits with code 2 before listening,
+  so there is nothing to send traffic to. In Kubernetes the pod never becomes ready and gets no traffic.
 
 ### Tests
 
@@ -66,6 +86,7 @@ python -m pytest -v
 | `test_engine.py` | Redaction of strings and whole records: recursion, scopes, string bodies, the JWT and card fixes |
 | `test_pipeline.py` | Raw lines and streams: bad JSON, bad UTF-8, deep nesting, long lines |
 | `test_cli.py` | The real program end to end, including idempotency over the whole sample file |
+| `test_server.py` | `/redact`, `/healthz`, and that the service does not start without valid rules |
 
 ### Code layout
 
@@ -77,6 +98,7 @@ python -m pytest -v
 | `engine.py` | Redact one parsed record: recursion, key rules, value rules, string bodies |
 | `pipeline.py` | Raw bytes in, redacted lines out: decoding, error records, streaming |
 | `redactor.py` | Command line arguments and the stderr summary |
+| `server.py` | Service mode (Flask): `/redact` and `/healthz` |
 
 ## 2. Design decisions and trade-offs
 
@@ -219,7 +241,41 @@ While checking the rest of the sample I found two more gaps in the provided rule
 
 ## 4. Deployment files
 
-_Not written yet: added in a later commit._
+```bash
+docker build -t redactor:1.0.0 .
+docker run --rm -p 8080:8080 redactor:1.0.0
+
+kubectl create configmap redactor-rules --from-file=rules.yaml
+kubectl apply -f k8s/
+```
+
+I did not have Docker or a cluster on my machine, so these files are written carefully but **not tested**.
+
+**`Dockerfile`**
+
+- `python:3.12-slim`: the official image without compilers and extra tools, so it is smaller and has less
+  that could be attacked.
+- `requirements.txt` is copied and installed before the code, so a code change reuses the cached
+  dependency layer. Only runtime dependencies are installed (no pytest), and `.dockerignore` keeps tests,
+  sample data and `.git` out of the image.
+- Runs as a non-root user (`USER 10001`): the service handles sensitive data and needs no privileges.
+- The provided `rules.yaml` is copied to `/etc/redactor/rules.yaml` as a default, so the image also
+  works on its own with `docker run`.
+
+**`k8s/deployment.yaml` and `k8s/service.yaml`**
+
+- **ConfigMap for the rules:** created from `rules.yaml` and mounted over `/etc/redactor`, so rules
+  change without rebuilding the image. Rules are read at startup, so after changing them:
+  `kubectl rollout restart deployment/redactor`.
+- **2 replicas,** so one pod can restart or be updated while the other serves.
+- **Readiness and liveness probes** on `/healthz`: Kubernetes only routes traffic to pods that answer,
+  and restarts pods that stop answering. A pod whose rules fail to load exits and never answers.
+- **Resource requests and limits,** so the scheduler knows what the pod needs and one pod cannot take
+  the whole node. Memory use is bounded by design (one line at a time, at most 10 MB per line).
+- **Locked-down security context:** non-root, no privilege escalation, read-only filesystem, all Linux
+  capabilities dropped.
+- **`ClusterIP` Service:** a stable in-cluster address (`http://redactor`) in front of the pods,
+  reachable only from inside the cluster.
 
 ## 5. Known limitations and what I would do with more time
 
@@ -244,6 +300,9 @@ _Not written yet: added in a later commit._
   explicit stack would remove the limit.
 - **Single threaded.** For more throughput I would process lines in parallel worker processes (the GIL
   stops threads from helping with CPU-bound work) and keep the output order with sequence numbers.
+- **The service uses Flask's built-in server**, which is meant for development. In production I would run
+  the same app under a WSGI server such as gunicorn (one that streams request bodies), and add a maximum
+  request size and timeouts.
 
 ## 6. Inline on live traffic with a sub-millisecond budget
 
