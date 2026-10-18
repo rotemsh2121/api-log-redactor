@@ -266,3 +266,29 @@ def test_number_in_front_of_a_card_is_not_merged_into_it():
     result, _ = redact("qty 12 4111111111111111")
 
     assert result == "qty 12 ************1111"
+
+
+# --- credentials written as key=value inside free text ---
+
+def test_password_in_free_text_is_masked():
+    # From input line 41: no key rule sees this, it is just a sentence.
+    result, counts = redact("login attempt password=hunter2 for user=zed")
+
+    assert result == "login attempt **** for user=zed"
+    assert counts == {"credentials-in-text": 1}
+
+
+def test_token_in_a_query_string_is_masked():
+    # From input line 30: a reset token in the request path.
+    result, _ = redact("/v1/reset?token=abc123def456&lang=en")
+
+    assert result == "/v1/reset?****&lang=en"
+
+
+def test_similar_words_in_free_text_are_kept():
+    # Only the exact names followed by "=" count, like the key rules.
+    text = "passwordless=true tokenizer=bpe"
+    result, counts = redact(text)
+
+    assert result == text
+    assert counts == {}

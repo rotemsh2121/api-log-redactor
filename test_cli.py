@@ -27,6 +27,7 @@ def test_redacts_the_sample_file():
     assert b"p@ssw0rd!" not in result.stdout          # line 10, JSON inside a string
     assert b"alice@example.com" not in result.stdout  # line 3, deep inside arrays
     assert b"sk_live_" not in result.stdout           # lines 1, 9 and 42
+    assert b"hunter2" not in result.stdout            # line 8 (form) and line 41 (free text)
 
 
 def test_summary_goes_to_stderr_without_sensitive_data():

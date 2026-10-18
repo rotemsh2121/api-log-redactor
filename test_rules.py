@@ -25,7 +25,7 @@ def test_loads_provided_rules_file():
     rules = load_rules("rules.yaml")
 
     assert len(rules["key_rules"]) == 5
-    assert len(rules["value_rules"]) == 4
+    assert len(rules["value_rules"]) == 5  # The 4 provided ones plus credentials-in-text.
     
 
 def test_exact_names_are_lower_case():

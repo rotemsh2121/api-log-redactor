@@ -63,3 +63,9 @@ value_rules:
   - name: api-key-prefix
     pattern: '\bsk_(?:live|test)_[A-Za-z0-9]+\b'
     action: mask
+
+  # Added: credentials written as name=value inside free text or a URL ("password=hunter2"),
+  # where key rules cannot see them. The value ends at whitespace or "&".
+  - name: credentials-in-text
+    pattern: '(?i)\b(?:password|passwd|pwd|secret|token)=[^\s&]+'
+    action: mask
