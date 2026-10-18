@@ -122,6 +122,76 @@ def test_key_rule_on_a_list_redacts_each_item():
     assert result["headers"]["Set-Cookie"] == ["****", "****"]
 
 
+def test_already_redacted_values_are_not_counted_again():
+    # From input line 12: a key rule over our own output changes nothing and counts nothing.
+    first, _ = redact_line({"headers": {"X-Api-Key": "abc", "Authorization": "Bearer x"}})
+    second, counts = redact_line(first)
+
+    assert second == first
+    assert counts == {}
+
+
+# --- string bodies: JSON inside a string, forms, plain text ---
+
+def test_json_inside_a_string_body_is_redacted():
+    # From input line 10: the body is a string that holds JSON.
+    body = '{"email":"carol@example.com","password":"p@ssw0rd!"}'
+    result, counts = redact_line({"body": body})
+
+    assert isinstance(result["body"], str)  # Still a string, like in the input.
+    assert "carol@example.com" not in result["body"]
+    assert '"password":"****"' in result["body"]
+    assert counts == {"email": 1, "secret-fields": 1}
+
+
+def test_json_string_body_without_secrets_keeps_its_formatting():
+    body = '{ "id": 42,  "ok": true }'
+    result, _ = redact_line({"body": body})
+
+    assert result["body"] == body
+
+
+def test_body_that_only_looks_like_json_is_treated_as_text():
+    result, counts = redact_line({"body": "{not json, mail a@b.com"})
+
+    assert result["body"].startswith("{not json, mail sha256:")
+    assert counts == {"email": 1}
+
+
+def test_form_body_is_redacted_field_by_field():
+    # From input line 8: the password is found by its field name, and %40 is decoded before matching.
+    record = {
+        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "body": "email=bob%40example.com&password=hunter2&remember=on",
+    }
+    result, counts = redact_line(record)
+
+    assert "hunter2" not in result["body"]
+    assert "bob" not in result["body"]
+    assert "password=****" in result["body"]
+    assert "remember=on" in result["body"]
+    assert counts == {"email": 1, "secret-fields": 1}
+
+
+def test_form_body_is_idempotent():
+    record = {
+        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "body": "email=bob%40example.com&password=hunter2",
+    }
+    first, _ = redact_line(record)
+    second, _ = redact_line(first)
+
+    assert second == first
+
+
+def test_plain_text_body_gets_value_rules():
+    # From input line 9: a text/plain body with an email and an API key inside a sentence.
+    result, counts = redact_line({"body": "reset dave@example.com. Temporary key: sk_live_9fA2kLmQ7x. Thanks!"})
+
+    assert result["body"].endswith("Temporary key: ****. Thanks!")
+    assert counts == {"email": 1, "api-key-prefix": 1}
+
+
 def test_line_that_is_not_an_object():
     # From input line 24: valid JSON, but a list instead of an object.
     result, counts = redact_line(["a@b.com", "4111111111111111"])
