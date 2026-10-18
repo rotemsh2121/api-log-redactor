@@ -11,7 +11,10 @@ VALIDATORS = {"luhn"}
 def load_rules(path):
     """Read the rules file at `path`. Raises ValueError if the file is invalid."""
     with open(path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        try:
+            config = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise ValueError(f"rules file is not valid YAML: {e}") from None
 
     if not isinstance(config, dict):
         raise ValueError("rules file must contain a mapping at the top level")

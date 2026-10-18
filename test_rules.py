@@ -49,6 +49,13 @@ def test_empty_file_is_rejected(tmp_path):
         load_rules(path)
 
 
+def test_broken_yaml_is_rejected(tmp_path):
+    # A YAML syntax error is reported as ValueError, like every other problem with the file.
+    path = write_rules(tmp_path, "key_rules: [")
+    with pytest.raises(ValueError, match="not valid YAML"):
+        load_rules(path)
+
+
 def test_file_without_rules_is_rejected(tmp_path):
     # A file with no rules would let all traffic through unredacted.
     path = write_rules(tmp_path, "version: 1\n")

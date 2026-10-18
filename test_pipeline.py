@@ -1,6 +1,7 @@
+import io
 import json
 
-from pipeline import process_line
+from pipeline import process_line, process_stream
 from rules import load_rules
 
 RULES = load_rules("rules.yaml")
@@ -87,3 +88,30 @@ def test_too_deeply_nested_json_becomes_an_error_record():
 
     assert error == "too_deep"
     assert json.loads(output)["_redactor_error"] == "too_deep"
+
+
+# --- whole streams ---
+
+def test_stream_writes_one_output_line_per_input_line():
+    data = b'{"body":{"email":"a@b.com"}}\n\nnot json\n{"ok":true}\n'
+    out = io.BytesIO()
+
+    counts, errors = process_stream(io.BytesIO(data), out, RULES)
+
+    lines = out.getvalue().decode("utf-8").splitlines()
+    assert len(lines) == 3  # The blank line is skipped.
+    assert json.loads(lines[1]) == {"_redactor_error": "invalid_json", "line": 3}
+    assert errors == [(3, "invalid_json")]
+    assert counts == {"email": 1}
+
+
+def test_too_long_line_is_replaced_and_the_next_line_still_works():
+    data = b'{"note":"' + b"x" * 1000 + b'"}\n{"ok":true}\n'
+    out = io.BytesIO()
+
+    _, errors = process_stream(io.BytesIO(data), out, RULES, max_line_bytes=100)
+
+    lines = out.getvalue().decode("utf-8").splitlines()
+    assert json.loads(lines[0]) == {"_redactor_error": "line_too_long", "line": 1}
+    assert json.loads(lines[1]) == {"ok": True}
+    assert errors == [(1, "line_too_long")]

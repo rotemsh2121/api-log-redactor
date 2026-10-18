@@ -4,6 +4,46 @@ import json
 
 from engine import redact_record
 
+# A longer line is replaced by an error record. This bounds the memory one line can use.
+MAX_LINE_BYTES = 10 * 1024 * 1024
+
+
+def process_stream(in_stream, out_stream, rules, max_line_bytes=MAX_LINE_BYTES):
+    """Redact every line of `in_stream` into `out_stream`, one line at a time.
+
+    Returns (counts, errors): redactions per rule, and a list of (line number, error kind).
+    """
+    counts = {}
+    errors = []
+    for line_number, raw in enumerate(read_lines(in_stream, max_line_bytes), start=1):
+        if raw is None:
+            output, error = error_record("line_too_long", line_number), "line_too_long"
+        else:
+            output, error = process_line(raw, line_number, rules, counts)
+        if error is not None:
+            errors.append((line_number, error))
+        if output is not None:
+            out_stream.write(output.encode("utf-8") + b"\n")
+    return counts, errors
+
+
+def read_lines(stream, max_bytes):
+    """Yield the lines of a binary stream one by one, or None for a line longer than `max_bytes`.
+
+    Only one line (at most `max_bytes`) is held in memory at a time.
+    """
+    while True:
+        line = stream.readline(max_bytes + 1)
+        if not line:
+            return  # End of the input.
+        if len(line) > max_bytes:
+            # Too long: read past the rest of it without keeping it in memory.
+            while line and not line.endswith(b"\n"):
+                line = stream.readline(max_bytes + 1)
+            yield None
+        else:
+            yield line
+
 
 def process_line(raw, line_number, rules, counts):
     """Redact one raw input line (bytes).
