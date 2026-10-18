@@ -15,6 +15,17 @@ def process_stream(in_stream, out_stream, rules, max_line_bytes=MAX_LINE_BYTES):
     """
     counts = {}
     errors = []
+    for output in redact_lines(in_stream, rules, counts, errors, max_line_bytes):
+        out_stream.write(output)
+    return counts, errors
+
+
+def redact_lines(in_stream, rules, counts, errors, max_line_bytes=MAX_LINE_BYTES):
+    """Yield the redacted output lines (bytes ending in a newline) one by one, as they are read.
+
+    Used by the CLI (written to stdout) and by the service (sent in the HTTP response).
+    Fills `counts` and `errors` along the way.
+    """
     for line_number, raw in enumerate(read_lines(in_stream, max_line_bytes), start=1):
         if raw is None:
             output, error = error_record("line_too_long", line_number), "line_too_long"
@@ -23,8 +34,7 @@ def process_stream(in_stream, out_stream, rules, max_line_bytes=MAX_LINE_BYTES):
         if error is not None:
             errors.append((line_number, error))
         if output is not None:
-            out_stream.write(output.encode("utf-8") + b"\n")
-    return counts, errors
+            yield output.encode("utf-8") + b"\n"
 
 
 def read_lines(stream, max_bytes):
