@@ -199,3 +199,32 @@ def test_line_that_is_not_an_object():
     assert result[0].startswith("sha256:")
     assert result[1] == "************1111"
     assert counts == {"email": 1, "credit-card": 1}
+
+# --- the JWT report: tokens are base64url, which uses "-" and "_" ---
+
+JWT_WITH_UNDERSCORE_IN_SIGNATURE = (  # From input line 1.
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
+    ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+)
+JWT_WITH_UNDERSCORE_IN_PAYLOAD = (  # From input line 16.
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJhIjoiPz8_In0"
+    ".dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+)
+
+
+def test_jwt_is_masked_completely():
+    # The old rule stopped at "_" and left the end of the signature visible.
+    result, counts = redact("forwarded header was Bearer " + JWT_WITH_UNDERSCORE_IN_SIGNATURE)
+
+    assert result == "forwarded header was Bearer ****"
+    assert counts == {"jwt": 1}
+
+
+def test_jwt_with_underscore_in_payload_is_found():
+    # The old rule did not match this token at all.
+    result, counts = redact("session " + JWT_WITH_UNDERSCORE_IN_PAYLOAD + " expired, retry")
+
+    assert result == "session **** expired, retry"
+    assert counts == {"jwt": 1}

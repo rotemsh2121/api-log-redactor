@@ -47,8 +47,9 @@ value_rules:
     pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
     action: hash
 
+  # JWT parts are base64url ("-" and "_", no "=" padding), not standard base64 ("+", "/", "=").
   - name: jwt
-    pattern: 'eyJ[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]*'
+    pattern: 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
     action: mask
 
   - name: credit-card
