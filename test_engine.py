@@ -228,3 +228,41 @@ def test_jwt_with_underscore_in_payload_is_found():
 
     assert result == "session **** expired, retry"
     assert counts == {"jwt": 1}
+
+
+# --- card numbers written with spaces or dashes ---
+
+def test_card_with_spaces_is_redacted():
+    # From input line 1: "card 4111 1111 1111 1111 on file".
+    result, counts = redact("card 4111 1111 1111 1111 on file")
+
+    assert result == "card ***************1111 on file"
+    assert counts == {"credit-card": 1}
+
+
+def test_card_with_dashes_is_redacted():
+    # From input line 6.
+    result, _ = redact("please charge 5555-5555-5555-4444 and send the receipt")
+
+    assert result == "please charge ***************4444 and send the receipt"
+
+
+def test_amex_grouped_4_6_5_is_redacted():
+    # From input line 36: American Express cards are grouped 4-6-5.
+    result, _ = redact("amex 3782 822463 10005")
+
+    assert result == "amex *************0005"
+
+
+def test_spaced_number_that_fails_luhn_is_kept():
+    result, counts = redact("ref 4111 1111 1111 1112")
+
+    assert result == "ref 4111 1111 1111 1112"
+    assert counts == {}
+
+
+def test_number_in_front_of_a_card_is_not_merged_into_it():
+    # A looser pattern read "12 4111111111111111" as one 18-digit number, which fails Luhn, and the card leaked.
+    result, _ = redact("qty 12 4111111111111111")
+
+    assert result == "qty 12 ************1111"

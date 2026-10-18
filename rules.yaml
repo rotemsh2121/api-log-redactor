@@ -53,7 +53,10 @@ value_rules:
     action: mask
 
   - name: credit-card
-    pattern: '\b\d{13,19}\b'
+    # 13-19 digits in a row, or the printed groupings: 4-4-4-4 (Visa, Mastercard)
+    # and 4-6-5 / 4-6-4 (Amex, Diners), separated by a space or a dash.
+    # [0-9] rather than \d, which in Python also matches non-Latin digits.
+    pattern: '\b(?:[0-9]{4}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}|[0-9]{4}[ -][0-9]{6}[ -][0-9]{4,5}|[0-9]{13,19})\b'
     validator: luhn
     action: partial
 
